@@ -27,11 +27,14 @@ export async function runEnrich(
     const prompt = await step.generate(bag, outputDir);
 
     try {
-      execSync(`claude -p ${modelArgs} /dev/stdin`, {
+      const env = { ...process.env };
+      delete env.CLAUDECODE;
+      execSync(`claude -p --dangerously-skip-permissions ${modelArgs} /dev/stdin`, {
         input: prompt,
         stdio: ["pipe", "inherit", "inherit"],
         timeout: 10 * 60 * 1000, // 10 minutes per step
         maxBuffer: 10 * 1024 * 1024,
+        env,
       });
       console.log(chalk.green(`  ✓ ${step.name}\n`));
     } catch (e: any) {
