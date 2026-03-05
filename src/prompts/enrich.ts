@@ -135,6 +135,10 @@ export const overviewEnrichStep: EnrichStepDescriptor = {
     const repoName = basename(bag.targetPath);
     return `You are enriching the archdoc wiki for the "${repoName}" codebase.
 
+=== PROGRESS ===
+Before starting: echo "[archdoc step 1] Starting Overview Narrative" >&2
+When done: echo "[archdoc step 1] DONE — overview.md rewritten" >&2
+
 === INSTRUCTIONS ===
 
 1. Read the existing pages in ${outputDir}/ to understand what's already generated
@@ -176,6 +180,10 @@ export const architectureEnrichStep: EnrichStepDescriptor = {
   requiredPages: ["overview"],
   generate: async (bag, outputDir) => {
     return `You are continuing enrichment of the archdoc wiki.
+
+=== PROGRESS ===
+Before starting: echo "[archdoc step 2] Starting Architecture Walkthrough" >&2
+When done: echo "[archdoc step 2] DONE — architecture.md written" >&2
 
 === CONTEXT ===
 
@@ -241,6 +249,11 @@ export const featureDeepDivesEnrichStep: EnrichStepDescriptor = {
 
     return `You are continuing enrichment of the archdoc wiki.
 
+=== PROGRESS ===
+Before starting: echo "[archdoc step 3] Starting Feature Deep-Dives" >&2
+After each module section: echo "[archdoc step 3] Completed module: <module name>" >&2
+When done: echo "[archdoc step 3] DONE — feature-deep-dives.md written" >&2
+
 === CONTEXT ===
 
 Steps 1-2 should be complete. Read ${outputDir}/overview.md and ${outputDir}/feature-census.md.
@@ -284,6 +297,11 @@ export const runtimeFlowsEnrichStep: EnrichStepDescriptor = {
   requiredPages: ["overview", "architecture"],
   generate: async (bag, outputDir) => {
     return `You are continuing enrichment of the archdoc wiki.
+
+=== PROGRESS ===
+Before starting: echo "[archdoc step 4] Starting Runtime Flows" >&2
+After each flow: echo "[archdoc step 4] Documented flow: <flow name>" >&2
+When done: echo "[archdoc step 4] DONE — runtime-flows.md written" >&2
 
 === CONTEXT ===
 
@@ -360,20 +378,45 @@ export const testQualityEnrichStep: EnrichStepDescriptor = {
           .join("\n")
       : "(no feature data)";
 
+    const totalTests = census?.totals.tests ?? 0;
+
     return `You are continuing enrichment of the archdoc wiki.
 
 === CONTEXT ===
 
-Steps 1-4 should be complete. This step produces two artifacts:
+Steps 1-4 should be complete. This step produces three outputs:
 1. An interactive HTML intent-map report
 2. A classified JSON dataset
 3. A wiki page summarizing test quality
+
+=== PROGRESS REPORTING ===
+
+This step involves classifying ${totalTests} tests. Report progress using shell echo commands
+so the user can track your work. Use this exact pattern at each milestone:
+
+  echo "[archdoc step 5] <message>" >&2
+
+Required progress reports:
+- At the START of step 5A: echo "[archdoc step 5] Starting classification of ${totalTests} tests" >&2
+- After every test FILE you finish (not every individual test): echo "[archdoc step 5] Classified N/${totalTests} tests (just finished <filename>)" >&2
+- When ALL tests are classified: echo "[archdoc step 5] Classification complete: ${totalTests}/${totalTests} tests" >&2
+- At the START of step 5B: echo "[archdoc step 5] Starting straggler check" >&2
+- When step 5B is done: echo "[archdoc step 5] Straggler check complete" >&2
+- At the START of step 5C: echo "[archdoc step 5] Generating HTML report" >&2
+- When HTML is written: echo "[archdoc step 5] HTML report written" >&2
+- At the START of step 5D: echo "[archdoc step 5] Writing wiki page" >&2
+- When DONE: echo "[archdoc step 5] DONE — all artifacts written" >&2
+
+Do NOT skip these progress reports. They are essential for the user to monitor progress.
 
 === STEP 5A: CLASSIFY EVERY TEST ===
 
 The test census data is embedded below. For EVERY test in the census, read the test source code
 (use the \`line\` and \`endLine\` fields to locate it in \`testFile\`). Also read the \`inferredSources\`
 files to understand what the test exercises.
+
+Work through tests FILE BY FILE. After finishing all tests in a file, report progress
+(see PROGRESS REPORTING above). This lets the user see steady progress rather than silence.
 
 For each test, determine three things:
 
