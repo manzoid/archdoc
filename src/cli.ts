@@ -265,9 +265,9 @@ Globally installed CLI (\`npm i -g @manzoid2/archdoc\`) for generating AI-powere
 To document a codebase, run these 3 phases in order:
 
 1. \`archdoc generate /path/to/repo\` — harvest data + skeleton pages (~seconds)
-2. Enrich steps 1-5 in parallel — each step pipes a prompt to claude:
-   \`archdoc enrich /path/to/repo --step N 2>/dev/null | claude --dangerously-skip-permissions -p -\`
-   where N is 1 through 5. All 5 are independent. Each takes 2-10 minutes.
+2. Enrich steps 1-5 — launch each as a background task, all 5 are independent:
+   \`archdoc enrich /path/to/repo --step N | claude --dangerously-skip-permissions -p -\`
+   where N is 1 through 5. Each takes 5-20 minutes. Wait for all to complete.
 3. \`archdoc render /path/to/repo --format site\` — build browsable HTML site (~seconds)
 
 Output lives in \`~/archdoc-runs/\`. The site URL is printed at the end.
