@@ -1,5 +1,5 @@
 import { basename } from "path";
-import { tmpdir } from "os";
+import { homedir } from "os";
 
 export type OutputFormat = "site" | "markdown";
 export type PipelinePhase = "harvest" | "generate" | "render" | "assemble";
@@ -16,12 +16,12 @@ export interface ArchdocConfig {
 }
 
 /**
- * Default output under /tmp/archdoc/<slug>-<timestamp>/.
+ * Default output under ~/archdoc-runs/<slug>-<timestamp>/.
  * Slug includes org/repo for readability. Each run gets its own directory.
  *
  * Examples:
- *   /tmp/archdoc/SakanaAIBusiness-marlin-20260305T082701Z/
- *   /tmp/archdoc/manzoid-archdoc-20260305T140301Z/
+ *   ~/archdoc-runs/SakanaAIBusiness-marlin-20260305T082701Z/
+ *   ~/archdoc-runs/manzoid-archdoc-20260305T140301Z/
  */
 export function defaultDirs(targetPath: string): { baseDir: string; outputDir: string; harvestDir: string } {
   const parts = targetPath.replace(/\\/g, "/").split("/");
@@ -36,7 +36,7 @@ export function defaultDirs(targetPath: string): { baseDir: string; outputDir: s
   // ISO 8601 basic format: 20260305T082801Z
   const now = new Date();
   const ts = now.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
-  const baseDir = `${tmpdir()}/archdoc/${slug}-${ts}`;
+  const baseDir = `${homedir()}/archdoc-runs/${slug}-${ts}`;
   return {
     baseDir,
     outputDir: `${baseDir}/output`,

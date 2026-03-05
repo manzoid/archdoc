@@ -3,7 +3,7 @@
 import { Command } from "commander";
 import { resolve, basename } from "path";
 import { readdir, stat } from "fs/promises";
-import { tmpdir } from "os";
+import { homedir } from "os";
 import { runPipeline } from "./pipeline/orchestrator.js";
 import { listEnrichSteps, generateStepPrompt, generateAllStepsPrompt } from "./prompts/enrich.js";
 import { renderBareHtml } from "./renderers/html-bare.js";
@@ -36,7 +36,7 @@ function repoSlug(targetPath: string): string {
  */
 async function findLatestRun(targetPath: string): Promise<{ baseDir: string; outputDir: string; harvestDir: string } | null> {
   const slug = repoSlug(targetPath);
-  const archdocTmp = `${tmpdir()}/archdoc`;
+  const archdocTmp = `${homedir()}/archdoc-runs`;
   let entries: string[];
   try {
     entries = await readdir(archdocTmp);
