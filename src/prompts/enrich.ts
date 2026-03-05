@@ -239,13 +239,27 @@ export const featureDeepDivesEnrichStep: EnrichStepDescriptor = {
   requiredPages: ["overview", "feature-census"],
   generate: async (bag, outputDir) => {
     const features = getHarvestData<FeatureCensusHarvest>(bag, "repo-feature-check");
-    const largeModules = features
+    const git = getHarvestData<GitAnalysisHarvest>(bag, "git-analysis");
+
+    const moduleList = features
       ? features.directoryGroups
-          .filter((g) => g.total >= 20)
-          .slice(0, 8)
-          .map((g) => `  - ${g.directory} (${g.total} symbols: ${g.sampleSymbols.slice(0, 4).join(", ")})`)
+          .filter((g) => g.total >= 10)
+          .slice(0, 15)
+          .map((g) => {
+            const churnFiles = git?.topChurnFiles.filter((f) =>
+              f.path.startsWith(g.directory + "/") || f.path.startsWith(g.directory)
+            ) ?? [];
+            const churn = churnFiles.reduce((s, f) => s + f.insertions + f.deletions, 0);
+            return `  - ${g.directory} (${g.total} symbols, ${g.functions}F/${g.methods}M/${g.classes}C, churn: ${churn})`;
+          })
           .join("\n")
       : "(no feature data)";
+
+    const topChurnFiles = git
+      ? git.topChurnFiles.slice(0, 15).map((f) =>
+          `  - ${f.path}: ${f.commits} commits (+${f.insertions}/-${f.deletions})`
+        ).join("\n")
+      : "(no git data)";
 
     return `You are continuing enrichment of the archdoc wiki.
 
@@ -256,11 +270,14 @@ When done: echo "[archdoc step 3] DONE — feature-deep-dives.md written" >&2
 
 === CONTEXT ===
 
-Steps 1-2 should be complete. Read ${outputDir}/overview.md and ${outputDir}/feature-census.md.
+Steps 1-2 should be complete. Read ${outputDir}/overview.md, ${outputDir}/feature-census.md, and ${outputDir}/architecture.md.
 
 === INSTRUCTIONS ===
 
-For each major module (20+ symbols), create or update a section in ${outputDir}/feature-deep-dives.md:
+You are producing a **feature architecture analysis** — the most valuable page in the wiki.
+This must be authoritative, specific, and grounded in source code. Read actual files.
+
+Create ${outputDir}/feature-deep-dives.md with:
 
 1. YAML frontmatter:
    ---
@@ -271,21 +288,55 @@ For each major module (20+ symbols), create or update a section in ${outputDir}/
    cross_refs: ["feature-census", "architecture", "overview"]
    ---
 
-2. For each module, write a section (## Module Name) covering:
+2. **Feature Map Table** — For EVERY module with 10+ symbols, one row:
+
+   | Category | Feature | Symbols | F | M | C | Churn | Hotspot | Description |
+   |----------|---------|--------:|--:|--:|--:|------:|---------|-------------|
+
+   - **Category**: Group related modules (e.g., "Data Processing", "API Layer", "Testing")
+   - **Description**: 1-2 sentences explaining what this module actually does. Read the source code.
+   - **Hotspot**: HIGH/MED/LOW based on churn relative to other modules
+
+3. **Cross-Cutting Concerns** — Identify shared infrastructure used across multiple features:
+
+   | Concern | Symbols | Used By | Notes |
+   |---------|--------:|---------|-------|
+
+   Things like: error handling, logging, config management, database access, auth,
+   shared utilities, DI/service layers, external API clients.
+
+4. **Top Hotspot Files** — The 15-20 highest churn files with their feature context:
+
+   | Churn | Commits | Feature | File |
+   |------:|--------:|---------|------|
+
+5. **Architectural Observations** — 5-8 specific, actionable observations:
+
+   | Observation | Affected Features | Severity |
+   |-------------|-------------------|----------|
+
+   Look for: code duplication, missing test coverage, high-churn hotspots,
+   legacy code, split implementations, oversized modules, orphaned code.
+
+6. **Per-Module Deep-Dives** — For each module with 20+ symbols, a section (## Module Name):
    - **Purpose** — What this module does (1-2 sentences)
    - **Key Components** — Most important classes/functions and what they do
    - **Dependencies** — What other modules it depends on
    - **Patterns** — Notable design patterns used
 
-3. Read the actual source files to understand each module. Don't guess.
+Read the actual source files for every module. Don't guess from names.
 
-=== LARGE MODULES TO COVER ===
+=== MODULES ===
 
-${largeModules}
+${moduleList}
+
+=== TOP CHURN FILES ===
+
+${topChurnFiles}
 
 === GO ===
 
-Read the source code for each module listed above, then write ${outputDir}/feature-deep-dives.md.`;
+Read the source code for each module, then write ${outputDir}/feature-deep-dives.md.`;
   },
 };
 
