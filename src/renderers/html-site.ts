@@ -3,6 +3,7 @@ import { join } from "path";
 import chalk from "chalk";
 import type { WikiManifest, ManifestPage } from "../types/wiki.js";
 import { discoverPages } from "./discover-pages.js";
+import { wrapSvgAsPage } from "./svg-page.js";
 
 interface HtmlArtifactPage {
   title: string;
@@ -28,9 +29,20 @@ async function discoverHtmlPages(outputDir: string): Promise<HtmlArtifactPage[]>
   });
 }
 
+
+async function discoverSvgPages(outputDir: string): Promise<HtmlArtifactPage[]> {
+  const files = await readdir(outputDir);
+  const svgFiles = files.filter((f) => f.endsWith(".svg"));
+  return svgFiles.map((file) => {
+    const slug = file.replace(/\.svg$/, "");
+    const title = inferHtmlTitle(file);
+    return { title, slug, file, order: 91 };
+  });
+}
+
 function inferHtmlTitle(filename: string): string {
   // Strip repo-name prefix (e.g. "octopus-test-intent-map.html" -> "test-intent-map")
-  const base = filename.replace(/\.html$/, "");
+  const base = filename.replace(/\.html$|.svg$/, "");
   const parts = base.split("-");
   // If first part looks like a repo name prefix, try removing it
   // Heuristic: if removing first segment still leaves a meaningful name
@@ -63,6 +75,7 @@ export async function renderSiteHtml(outputDir: string): Promise<void> {
 
   const pages = await discoverPages(outputDir, manifest);
   const htmlPages = await discoverHtmlPages(outputDir);
+  const svgPages = await discoverSvgPages(outputDir);
 
   // Read all page content
   const pageData: { page: ManifestPage; html: string }[] = [];
@@ -82,17 +95,16 @@ export async function renderSiteHtml(outputDir: string): Promise<void> {
     console.log(chalk.dim(`  \u2713 ${hp.file} (standalone page)`));
   }
 
-  // Copy SVG diagrams into render dir
-  const allFiles = await readdir(outputDir);
-  for (const file of allFiles) {
-    if (file.endsWith(".svg")) {
-      const src = await readFile(join(outputDir, file));
-      await writeFile(join(renderDir, file), src);
-      console.log(chalk.dim(`  \u2713 ${file} (diagram)`));
-    }
+  // Write SVG diagrams as standalone pages + raw SVGs for inline refs
+  for (const sp of svgPages) {
+    const svgContent = await readFile(join(outputDir, sp.file), "utf-8");
+    await writeFile(join(renderDir, sp.file), svgContent);
+    const svgHtml = wrapSvgAsPage(svgContent, sp.title, manifest.repo);
+    await writeFile(join(renderDir, sp.slug + ".html"), svgHtml);
+    console.log(chalk.dim("  ✓ " + sp.file + " (diagram page)"));
   }
 
-  const html = buildSinglePageApp(manifest, pages, pageData, htmlPages);
+  const html = buildSinglePageApp(manifest, pages, pageData, htmlPages, svgPages);
   await writeFile(join(renderDir, "index.html"), html);
   console.log(chalk.dim("  ✓ index.html"));
 }
@@ -148,7 +160,7 @@ function markdownToHtml(md: string, pages: ManifestPage[]): string {
   html = processMarkdownTables(html);
 
   // Markdown images (must be before links)
-  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="content-img">');
+  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_m: string, alt: string, src: string) => { if (src.endsWith('.svg')) { const page = src.replace(/\.svg$/, '.html'); return '<a href="' + page + '" class="diagram-link" title="Click to view full size"><img src="' + src + '" alt="' + escapeHtml(alt) + '" class="content-img"></a>'; } return '<img src="' + src + '" alt="' + escapeHtml(alt) + '" class="content-img">'; });
 
   // Markdown links
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="ext-link">$1</a>');
@@ -224,7 +236,8 @@ function buildSinglePageApp(
   manifest: WikiManifest,
   pages: ManifestPage[],
   pageData: { page: ManifestPage; html: string }[],
-  htmlPages: HtmlArtifactPage[]
+  htmlPages: HtmlArtifactPage[],
+  svgPages: HtmlArtifactPage[]
 ): string {
   const allTags = manifest.tags;
 
@@ -242,6 +255,15 @@ function buildSinglePageApp(
       <a href="${hp.file}" class="nav-link">
         <span class="nav-order">${String(hp.order).padStart(2, "0")}</span>
         <span class="nav-title">${escapeHtml(hp.title)}</span>
+      </a>
+    </li>`
+  ).join("\n");
+
+  const svgNavItems = svgPages.map((sp) =>
+    `<li>
+      <a href="${sp.slug}.html" class="nav-link">
+        <span class="nav-order">${String(sp.order).padStart(2, "0")}</span>
+        <span class="nav-title">${escapeHtml(sp.title)}</span>
       </a>
     </li>`
   ).join("\n");
@@ -619,6 +641,10 @@ function buildSinglePageApp(
     padding: 12px;
   }
 
+  .diagram-link { display: block; cursor: pointer; transition: opacity 0.15s; }
+  .diagram-link:hover { opacity: 0.85; }
+  .diagram-link:hover .content-img { border-color: var(--accent); }
+
   .content-area strong { color: var(--text-bright); font-weight: 600; }
   .content-area em { font-style: italic; color: var(--text); }
 
@@ -824,6 +850,12 @@ function buildSinglePageApp(
   <div class="nav-section-label">Interactive</div>
   <ul class="nav-list" id="navListHtml">
     ${htmlNavItems}
+  </ul>` : ""}
+${svgPages.length > 0 ? `
+
+  <div class="nav-section-label">Diagrams</div>
+  <ul class="nav-list" id="navListSvg">
+    ${svgNavItems}
   </ul>` : ""}
 
   <div class="tag-section">

@@ -51,12 +51,13 @@ export async function renderDiagrams(outputDir: string): Promise<DiagramResult[]
 
     try {
       await execFileAsync("d2", [
-        "--theme", "200",  // dark theme
-        "--pad", "20",
+        "--theme", "0",
+        "--layout", "elk",
+        "--pad", "40",
         inputPath,
         outputPath,
       ], {
-        timeout: 30_000,
+        timeout: 60_000,
       });
       console.log(chalk.dim(`  ✓ ${file} → ${result.output}`));
     } catch (err) {

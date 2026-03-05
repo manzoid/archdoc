@@ -6,6 +6,35 @@ import type { EnrichStepDescriptor } from "../types/tool.js";
 import type { CodeStatsHarvest, FeatureCensusHarvest, GitAnalysisHarvest, TestCensusHarvest } from "../types/harvest.js";
 import { enrichSteps } from "../registry.js";
 
+
+const WRITING_STYLE = `
+=== WRITING STYLE ===
+
+Structure your output for easy scanning and cognitive intake:
+
+- **Use headers liberally** — break content into short, titled sections (h2, h3, h4)
+- **Short paragraphs** — max 2-3 sentences per paragraph. One idea per paragraph.
+- **Bullet points over prose** — when listing capabilities, components, or decisions, use bullets not run-on sentences
+- **Lead with the key insight** — start each section with the most important takeaway, then elaborate
+- **Tables for comparisons** — when comparing options, components, or trade-offs, use a table
+- **Whitespace matters** — leave blank lines between sections. Dense text walls are hard to read.
+- **Bold key terms** on first use — helps readers scan for what they care about
+- **Keep descriptions atomic** — describe one component/concept per bullet or sub-section, not multiple in one paragraph
+
+BAD (wall of text):
+  "Frontend (Next.js, ~62K LOC TypeScript) -- The workspace where bankers configure generation tasks, monitor real-time progress via SSE, and review generated slides. Uses next-intl for JP/EN and Auth0 for auth."
+
+GOOD (structured for scanning):
+  ### Frontend (Next.js)
+  ~62K LOC TypeScript
+
+  - **Workspace UI** — configure generation tasks, review slides
+  - **Real-time progress** — SSE streaming from backend
+  - **i18n** — next-intl for Japanese/English
+  - **Auth** — Auth0 OAuth flow
+
+`;
+
 // ── Public API ───────────────────────────────────────────────
 
 /** List all enrich steps (for `archdoc enrich` with no flags) */
@@ -35,7 +64,8 @@ export async function generateStepPrompt(
     const available = sorted.map((s) => s.step).join(", ");
     throw new Error(`No enrich step ${stepNumber}. Available steps: ${available}`);
   }
-  return step.generate(bag, outputDir);
+  const prompt = await step.generate(bag, outputDir);
+  return WRITING_STYLE + prompt;
 }
 
 /** Generate a combined prompt with all steps sequenced */
@@ -51,6 +81,7 @@ export async function generateAllStepsPrompt(
   sections.push(`You are enriching the archdoc wiki for the "${repoName}" codebase.`);
   sections.push(`archdoc has generated data-driven wiki pages in ${outputDir}/.`);
   sections.push(`Your job is to work through the following ${sorted.length} steps IN ORDER.\n`);
+  sections.push(WRITING_STYLE);
   sections.push(`Complete each step fully before moving to the next.\n`);
 
   for (const step of sorted) {
