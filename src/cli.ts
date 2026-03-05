@@ -271,6 +271,7 @@ To document a codebase, run these 3 phases in order:
 3. \`archdoc render /path/to/repo --format site\` — build browsable HTML site (~seconds)
 
 Output lives in \`~/archdoc-runs/\`. The site URL is printed at the end.
+
 `;
 
     try {
