@@ -5,6 +5,7 @@ import { resolve, basename } from "path";
 import { readdir, stat } from "fs/promises";
 import { homedir } from "os";
 import { runPipeline } from "./pipeline/orchestrator.js";
+import { runEnrich } from "./pipeline/enrich-runner.js";
 import { listEnrichSteps, generateStepPrompt, generateAllStepsPrompt } from "./prompts/enrich.js";
 import { renderBareHtml } from "./renderers/html-bare.js";
 import { renderSiteHtml } from "./renderers/html-site.js";
@@ -180,6 +181,59 @@ program
       }
     } catch (err) {
       console.error("archdoc render failed:", err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
+// Full pipeline: generate → enrich (AI) → render
+program
+  .command("run")
+  .description("Run the full pipeline: generate → enrich (AI) → render")
+  .argument("<target>", "Path to the codebase to document")
+  .option("--model <model>", "Claude model for enrichment (passed to claude CLI)")
+  .option("--render-format <format>", "Render format: bare or site", "site")
+  .option("--churn-since <date>", "Start date for churn analysis (YYYY-MM-DD)")
+  .option("--skip-tools <tools>", "Comma-separated list of tool IDs to skip")
+  .action(async (target: string, options) => {
+    const targetPath = resolve(target);
+    const dirs = defaultDirs(targetPath);
+    const config: ArchdocConfig = {
+      targetPath,
+      output: "markdown",
+      outputDir: dirs.outputDir,
+      harvestDir: dirs.harvestDir,
+      churnSince: options.churnSince,
+      skipTools: options.skipTools ? options.skipTools.split(",").map((t: string) => t.trim()) : undefined,
+    };
+
+    try {
+      // Phase 1+2+4: generate
+      await runPipeline(config);
+
+      // Phase: enrich (AI)
+      const chalk = (await import("chalk")).default;
+      console.log(chalk.yellow("\n▸ Phase: ENRICH — AI writing narrative pages...\n"));
+      await runEnrich(dirs.harvestDir, dirs.outputDir, { model: options.model });
+      console.log(chalk.green("\n✓ Enrichment complete!\n"));
+
+      // Phase: render
+      console.log(chalk.yellow("▸ Phase: RENDER — producing HTML site...\n"));
+      const diagResults = await renderDiagrams(dirs.outputDir);
+      if (diagResults.length > 0) {
+        console.log(`  ${diagResults.filter((d) => d.status === "success").length} diagram(s) rendered`);
+      }
+
+      if (options.renderFormat === "site") {
+        await renderSiteHtml(dirs.outputDir);
+        console.log(chalk.green(`\n✓ Site written to ${dirs.outputDir}/site-fancy/`));
+      } else {
+        await renderBareHtml(dirs.outputDir);
+        console.log(chalk.green(`\n✓ Site written to ${dirs.outputDir}/site/`));
+      }
+
+      console.log(`\nRun directory: ${dirs.baseDir}`);
+    } catch (err) {
+      console.error("archdoc run failed:", err instanceof Error ? err.message : err);
       process.exit(1);
     }
   });
