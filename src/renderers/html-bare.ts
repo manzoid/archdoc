@@ -2,6 +2,7 @@ import { readFile, writeFile, readdir, mkdir } from "fs/promises";
 import { join, basename } from "path";
 import chalk from "chalk";
 import type { WikiManifest, ManifestPage } from "../types/wiki.js";
+import { discoverPages } from "./discover-pages.js";
 
 export async function renderBareHtml(outputDir: string): Promise<void> {
   const manifestPath = join(outputDir, "manifest.json");
@@ -11,7 +12,7 @@ export async function renderBareHtml(outputDir: string): Promise<void> {
   const renderDir = join(outputDir, "site");
   await mkdir(renderDir, { recursive: true });
 
-  const pages = [...manifest.pages].sort((a, b) => a.order - b.order);
+  const pages = await discoverPages(outputDir, manifest);
 
   // Render each page
   for (const page of pages) {
