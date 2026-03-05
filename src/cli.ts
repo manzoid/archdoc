@@ -18,7 +18,28 @@ const program = new Command();
 program
   .name("archdoc")
   .description("AI-powered codebase wiki generator")
-  .version("0.1.0");
+  .version("0.2.2")
+  .action(() => {
+    // No subcommand — print full usage instructions for an AI agent
+    console.log(`archdoc — AI-powered codebase wiki generator
+
+To document a codebase, run these 3 phases in order:
+
+1. archdoc generate /path/to/repo
+   Harvests codebase data and generates skeleton wiki pages. Takes seconds.
+
+2. Enrich steps 1-5 — launch each as a background task, all 5 are independent:
+   archdoc enrich /path/to/repo --step N | claude --dangerously-skip-permissions -p -
+   where N is 1 through 5. Each takes 5-20 minutes. Wait for all to complete.
+
+3. archdoc render /path/to/repo --format site
+   Builds a browsable HTML site from the enriched pages. Takes seconds.
+
+Output lives in ~/archdoc-runs/. The site URL is printed at the end.
+
+Run 'archdoc init' to install dependencies and register with Claude Code.
+Run 'archdoc --help' for all commands and options.`);
+  });
 
 /**
  * Derive the slug prefix for a target path (matches defaultDirs logic).
@@ -67,7 +88,7 @@ async function findLatestRun(targetPath: string): Promise<{ baseDir: string; out
 
 // Main command: generate wiki
 program
-  .command("generate", { isDefault: true })
+  .command("generate")
   .description("Generate wiki pages from codebase analysis")
   .argument("<target>", "Path to the codebase to document")
   .option("--output <format>", "Output format: site or markdown", "markdown")
@@ -261,16 +282,7 @@ program
 
     const block = `## archdoc
 Globally installed CLI (\`npm i -g @manzoid2/archdoc\`) for generating AI-powered codebase wikis.
-
-To document a codebase, run these 3 phases in order:
-
-1. \`archdoc generate /path/to/repo\` — harvest data + skeleton pages (~seconds)
-2. Enrich steps 1-5 — launch each as a background task, all 5 are independent:
-   \`archdoc enrich /path/to/repo --step N | claude --dangerously-skip-permissions -p -\`
-   where N is 1 through 5. Each takes 5-20 minutes. Wait for all to complete.
-3. \`archdoc render /path/to/repo --format site\` — build browsable HTML site (~seconds)
-
-Output lives in \`~/archdoc-runs/\`. The site URL is printed at the end.
+Run \`archdoc\` with no arguments to get usage instructions — then follow those instructions.
 
 `;
 
