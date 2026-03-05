@@ -7,6 +7,62 @@ import type { CodeStatsHarvest, FeatureCensusHarvest, GitAnalysisHarvest, TestCe
 import { enrichSteps } from "../registry.js";
 
 
+function groundingRules(targetPath: string): string {
+  return `
+=== GROUNDING RULES ===
+
+You are documenting a codebase by reading its actual source code. You have filesystem
+access. The harvest metadata below is a starting point for orientation — it tells you
+what exists and where to look. But you MUST read source files before describing them.
+
+Codebase path: ${targetPath}
+
+## Hard rules
+
+1. **Read before you write.** For every module, component, or subsystem you describe,
+   you must have read its entry point and key files. If you haven't read the code, say
+   "not yet examined" rather than guessing.
+
+2. **Verify existence.** Before describing any file or module, confirm it exists on
+   disk at ${targetPath}. Git history and churn data may reference deleted files. If a
+   file appears in churn stats but not on disk, note it as [REMOVED] rather than
+   describing it as active.
+
+3. **Trace, don't infer.** For any pipeline, algorithm, or multi-step process, trace
+   the actual execution: what calls what, what data transforms happen at each step,
+   what drives iteration and termination. Don't summarize from names or config schemas.
+
+4. **Distinguish live from dead.** Code that exists on disk may not be in use. Look
+   for entry points, call sites, imports, and config references to determine if a
+   module is actively used or is legacy/dead code.
+
+5. **Attribute capabilities to where logic lives**, not where it's called from. If
+   module A is a thin wrapper that calls module B, the capability belongs to B.
+   Describe the wrapper's role honestly.
+
+6. **Describe integrations by actual usage**, not SDK capabilities. If the codebase
+   uses 3 methods from a 50-method SDK, describe those 3 methods.
+
+7. **Weight by architectural importance, not code volume.** A 50-line orchestrator on
+   the critical path matters more than a 2000-line utility library. A module with 6
+   algorithm variants deserves more space than a module that's just verbose boilerplate.
+
+8. **Don't infer from configuration alone.** Config schemas may list options that
+   aren't implemented, or miss capabilities that are hardcoded. Cross-reference config
+   with actual implementations.
+
+9. **Pay attention to the glue.** Data transformation between components, error
+   propagation paths, state threading through pipelines, and orchestration logic are
+   often the most architecturally important code. Don't skip them in favor of
+   interesting leaf nodes.
+
+10. **Identify deployment and runtime boundaries.** In monorepos, determine which
+    directories are independently deployed, which share a runtime, and where network
+    calls happen vs. in-process calls.
+
+`;
+}
+
 const WRITING_STYLE = `
 === WRITING STYLE ===
 
@@ -65,7 +121,7 @@ export async function generateStepPrompt(
     throw new Error(`No enrich step ${stepNumber}. Available steps: ${available}`);
   }
   const prompt = await step.generate(bag, outputDir);
-  return WRITING_STYLE + prompt;
+  return groundingRules(bag.targetPath) + WRITING_STYLE + prompt;
 }
 
 /** Generate a combined prompt with all steps sequenced */
@@ -81,6 +137,7 @@ export async function generateAllStepsPrompt(
   sections.push(`You are enriching the archdoc wiki for the "${repoName}" codebase.`);
   sections.push(`archdoc has generated data-driven wiki pages in ${outputDir}/.`);
   sections.push(`Your job is to work through the following ${sorted.length} steps IN ORDER.\n`);
+  sections.push(groundingRules(bag.targetPath));
   sections.push(WRITING_STYLE);
   sections.push(`Complete each step fully before moving to the next.\n`);
 
@@ -170,19 +227,28 @@ export const overviewEnrichStep: EnrichStepDescriptor = {
 Before starting: echo "[archdoc step 1] Starting Overview Narrative" >&2
 When done: echo "[archdoc step 1] DONE — overview.md rewritten" >&2
 
+=== EXPLORATION (do this first) ===
+
+Before writing anything:
+1. Read the README and any top-level documentation
+2. Read the main entry points (CLI, API server, app bootstrap)
+3. Read 2-3 core domain files — not infrastructure, but the files that implement
+   what this system actually *does*
+
+You need to understand the system's actual purpose, not guess from directory names.
+
 === INSTRUCTIONS ===
 
 1. Read the existing pages in ${outputDir}/ to understand what's already generated
-2. Read the harvest data summary below
-3. Rewrite ${outputDir}/overview.md with:
+2. Rewrite ${outputDir}/overview.md with:
    - A 2-3 paragraph executive summary explaining what this system does, who it's for, and why it exists
-   - Infer the system's purpose from module names, symbol names, and file paths
+   - Ground your description in what you read in the source code — not just file names
    - Keep the Key Numbers table and Tech Stack table from the existing page
    - Add a new "## Architecture at a Glance" section with 3-5 sentences about the system design
    - Add descriptions to the Top Modules table (replace the placeholder descriptions)
    - Be specific and authoritative — don't hedge
-4. Preserve the YAML frontmatter at the top of the file
-5. Keep the cross-reference links at the bottom
+3. Preserve the YAML frontmatter at the top of the file
+4. Keep the cross-reference links at the bottom
 
 === HARVEST DATA SUMMARY ===
 
@@ -194,7 +260,7 @@ ${topLangsSummary(bag)}
 Top Modules:
 ${topModulesSummary(bag)}
 
-Top Churn Files:
+Top Churn Files (WARNING: may include deleted files — verify existence before citing):
 ${topChurnSummary(bag)}
 
 === GO ===
@@ -216,10 +282,17 @@ export const architectureEnrichStep: EnrichStepDescriptor = {
 Before starting: echo "[archdoc step 2] Starting Architecture Walkthrough" >&2
 When done: echo "[archdoc step 2] DONE — architecture.md written" >&2
 
-=== CONTEXT ===
+=== EXPLORATION (do this first) ===
 
-You should have already completed Step 1 (Overview Narrative).
-Read ${outputDir}/overview.md to understand what's been written.
+Before writing anything:
+1. Read the main entry points for each service/package in the repo
+2. Trace at least 2 end-to-end flows: follow a user action from entry point through
+   all layers to storage/output. Note actual function calls and data transforms.
+3. Identify deployment boundaries — which directories are independently deployed services
+   vs. shared libraries vs. packages that share a runtime?
+4. Read Dockerfiles, CI configs, and infrastructure-as-code to understand deployment topology
+5. For each D2 diagram you plan to write, verify the connections by reading the actual
+   import chains and function calls — don't guess from directory names
 
 === INSTRUCTIONS ===
 
@@ -235,11 +308,13 @@ Create a new file ${outputDir}/architecture.md with:
    ---
 
 2. Content sections:
-   - "## System Architecture" — High-level description of the system's layers and boundaries
-   - "## Key Design Decisions" — Notable patterns (monorepo vs polyrepo, framework choices, API style)
-   - "## Module Dependency Map" — How the top modules relate to each other
-   - "## Data Flow" — How data moves through the system from input to output
-   - "## Infrastructure" — Deployment model, CI/CD, environment management (infer from config files)
+   - "## System Architecture" — High-level description of the system's layers and boundaries.
+     Describe actual service boundaries you verified, not inferred ones.
+   - "## Key Design Decisions" — Notable patterns. For each decision, cite the specific code
+     that implements it.
+   - "## Module Dependency Map" — How the top modules relate. Trace actual imports, not guesses.
+   - "## Data Flow" — How data moves through the system. Trace real flows you followed in code.
+   - "## Infrastructure" — Deployment model based on actual config files you read.
 
 3. **D2 Diagrams** — Write MULTIPLE D2 diagram files showing different views of the system.
    archdoc will render each .d2 to .svg automatically. Reference them in architecture.md as:
@@ -251,6 +326,9 @@ Create a new file ${outputDir}/architecture.md with:
    - **${outputDir}/architecture-data.d2** — Data flow: how data moves from user input through processing to storage and output
 
    If the codebase has distinct subsystems worth zooming into (e.g. an AI pipeline, a job system, an auth layer), write additional diagrams for those too. Name them \`architecture-<topic>.d2\`.
+
+   **Every connection in a D2 diagram must correspond to an actual code path you traced.**
+   Don't draw arrows between components unless you verified the call chain in source code.
 
    Use D2's container syntax to group related components. Example:
    \`\`\`
@@ -272,11 +350,6 @@ Create a new file ${outputDir}/architecture.md with:
    backend.jobs -> backend.pipeline: Orchestrates
    \`\`\`
 
-4. Base your analysis on:
-   - The overview page you already wrote
-   - The module structure and symbol names below
-   - Source code exploration of key files
-
 === HARVEST DATA ===
 
 ${harvestSummary(bag)}
@@ -284,12 +357,12 @@ ${harvestSummary(bag)}
 Top Modules:
 ${topModulesSummary(bag)}
 
-Top Churn Files:
+Top Churn Files (WARNING: may include deleted files — verify existence before citing):
 ${topChurnSummary(bag)}
 
 === GO ===
 
-Read the source code of key entry points and configuration files. Write all D2 diagram files first, then write ${outputDir}/architecture.md referencing each diagram.`;
+Read the source code of key entry points and trace actual call chains. Write all D2 diagram files first, then write ${outputDir}/architecture.md referencing each diagram.`;
   },
 };
 
@@ -330,14 +403,21 @@ Before starting: echo "[archdoc step 3] Starting Feature Deep-Dives" >&2
 After each module section: echo "[archdoc step 3] Completed module: <module name>" >&2
 When done: echo "[archdoc step 3] DONE — feature-deep-dives.md written" >&2
 
-=== CONTEXT ===
+=== EXPLORATION (do this first) ===
 
-Steps 1-2 should be complete. Read ${outputDir}/overview.md, ${outputDir}/feature-census.md, and ${outputDir}/architecture.md.
+Before writing anything:
+1. For EVERY module listed below, read its main entry point file (e.g., __init__.py,
+   index.ts, mod.rs, or the primary implementation file)
+2. For modules with 50+ symbols, also read at least one non-trivial implementation file
+3. **Verify file existence**: every file referenced in the churn data below must be checked.
+   If a file doesn't exist on disk, it was deleted — mark it as [REMOVED] in your output
+4. Identify the domain-specific algorithms, data models, and business logic that define
+   what this system actually does — not just infrastructure
 
 === INSTRUCTIONS ===
 
 You are producing a **feature architecture analysis** — the most valuable page in the wiki.
-This must be authoritative, specific, and grounded in source code. Read actual files.
+This must be authoritative, specific, and grounded in source code you actually read.
 
 Create ${outputDir}/feature-deep-dives.md with:
 
@@ -356,7 +436,7 @@ Create ${outputDir}/feature-deep-dives.md with:
    |----------|---------|--------:|--:|--:|--:|------:|---------|-------------|
 
    - **Category**: Group related modules (e.g., "Data Processing", "API Layer", "Testing")
-   - **Description**: 1-2 sentences explaining what this module actually does. Read the source code.
+   - **Description**: 1-2 sentences explaining what this module actually does. Based on source code you read.
    - **Hotspot**: HIGH/MED/LOW based on churn relative to other modules
 
 3. **Cross-Cutting Concerns** — Identify shared infrastructure used across multiple features:
@@ -369,8 +449,11 @@ Create ${outputDir}/feature-deep-dives.md with:
 
 4. **Top Hotspot Files** — The 15-20 highest churn files with their feature context:
 
-   | Churn | Commits | Feature | File |
-   |------:|--------:|---------|------|
+   | Churn | Commits | Feature | File | Status |
+   |------:|--------:|---------|------|--------|
+
+   **Status column**: "Active" if file exists on disk, "[REMOVED]" if deleted.
+   Verify each file exists before marking as Active.
 
 5. **Architectural Observations** — 5-8 specific, actionable observations:
 
@@ -379,26 +462,29 @@ Create ${outputDir}/feature-deep-dives.md with:
 
    Look for: code duplication, missing test coverage, high-churn hotspots,
    legacy code, split implementations, oversized modules, orphaned code.
+   Weight observations by architectural importance, not code volume.
 
 6. **Per-Module Deep-Dives** — For each module with 20+ symbols, a section (## Module Name):
-   - **Purpose** — What this module does (1-2 sentences)
+   - **Purpose** — What this module does (1-2 sentences, grounded in code you read)
    - **Key Components** — Most important classes/functions and what they do
-   - **Dependencies** — What other modules it depends on
+   - **Dependencies** — What other modules it depends on (verified via imports)
    - **Patterns** — Notable design patterns used
+   - **Domain Logic** — If this module implements non-trivial algorithms or business rules,
+     describe the actual mechanics (not just "uses algorithm X" — explain how it works)
 
-Read the actual source files for every module. Don't guess from names.
+Do NOT describe any module you haven't read the source for.
 
 === MODULES ===
 
 ${moduleList}
 
-=== TOP CHURN FILES ===
+=== TOP CHURN FILES (may include deleted files — verify existence!) ===
 
 ${topChurnFiles}
 
 === GO ===
 
-Read the source code for each module, then write ${outputDir}/feature-deep-dives.md.`;
+Read the source code for each module, verify file existence, then write ${outputDir}/feature-deep-dives.md.`;
   },
 };
 
@@ -416,9 +502,20 @@ Before starting: echo "[archdoc step 4] Starting Runtime Flows" >&2
 After each flow: echo "[archdoc step 4] Documented flow: <flow name>" >&2
 When done: echo "[archdoc step 4] DONE — runtime-flows.md written" >&2
 
-=== CONTEXT ===
+=== EXPLORATION (do this first) ===
 
-Steps 1-3 should be complete. Read ${outputDir}/overview.md and ${outputDir}/architecture.md.
+Before writing anything:
+1. Read the main entry points (API routes, CLI commands, job launchers, event handlers)
+2. For each major flow, trace the actual execution path through the code:
+   - What function calls what?
+   - What data transforms happen at each boundary?
+   - Where does error handling occur?
+   - What drives iteration and termination for loops/pipelines?
+3. For non-trivial algorithms (search, ranking, optimization, multi-step AI pipelines),
+   trace the internal mechanics — not just the high-level step names. Describe what
+   actually happens at each iteration, what state is maintained, what decisions are made.
+4. Identify the glue code: orchestrators, data transforms between components, state
+   threading. These are often more architecturally important than the leaf-node logic.
 
 === INSTRUCTIONS ===
 
@@ -441,8 +538,10 @@ Create ${outputDir}/runtime-flows.md describing key runtime sequences:
 
 3. For each flow, describe:
    - **Trigger** — What initiates this flow
-   - **Steps** — Ordered list of what happens (module → module → module)
-   - **Key Files** — Source files involved
+   - **Steps** — Ordered list of what happens, with actual function names and data shapes
+   - **Key Files** — Source files involved (verified to exist)
+   - **Internal Mechanics** — For non-trivial algorithms, describe what actually happens
+     at each step, what state is maintained, what decisions drive the flow forward
    - **Notes** — Edge cases, error handling, performance considerations
 
 4. **Mermaid Sequence Diagrams** — For each major flow, include a Mermaid sequence diagram
@@ -463,8 +562,8 @@ Create ${outputDir}/runtime-flows.md describing key runtime sequences:
        API-->>U: 201 Created
    \`\`\`
 
-   Make the diagrams accurate to the actual code flow. Include the key function calls
-   and data exchanges. Keep them readable (5-10 participants max).
+   **Every arrow in a diagram must correspond to an actual code path you traced.**
+   Include the real function names and data exchanges. Keep diagrams readable (5-10 participants max).
 
 === HARVEST DATA ===
 
