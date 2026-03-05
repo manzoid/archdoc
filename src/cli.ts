@@ -7,6 +7,7 @@ import { tmpdir } from "os";
 import { runPipeline } from "./pipeline/orchestrator.js";
 import { listEnrichSteps, generateStepPrompt, generateAllStepsPrompt } from "./prompts/enrich.js";
 import { renderBareHtml } from "./renderers/html-bare.js";
+import { renderSiteHtml } from "./renderers/html-site.js";
 import type { ArchdocConfig, OutputFormat, PipelinePhase } from "./types/config.js";
 import { defaultDirs } from "./types/config.js";
 
@@ -156,13 +157,18 @@ program
         process.exit(1);
       }
 
+      console.log(`Using run: ${latest?.baseDir ?? "(custom dir)"}`);
+
       if (options.format === "bare") {
-        console.log(`Using run: ${latest?.baseDir ?? "(custom dir)"}`);
         console.log("Rendering bare HTML site...\n");
         await renderBareHtml(outputDir);
         console.log(`\nSite written to ${outputDir}/site/`);
+      } else if (options.format === "site") {
+        console.log("Rendering interactive site...\n");
+        await renderSiteHtml(outputDir);
+        console.log(`\nSite written to ${outputDir}/site-fancy/`);
       } else {
-        console.error(`Unknown render format: ${options.format}`);
+        console.error(`Unknown render format: ${options.format}. Use 'bare' or 'site'.`);
         process.exit(1);
       }
     } catch (err) {
