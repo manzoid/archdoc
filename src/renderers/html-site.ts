@@ -1,8 +1,57 @@
-import { readFile, writeFile, mkdir } from "fs/promises";
+import { readFile, writeFile, readdir, mkdir } from "fs/promises";
 import { join } from "path";
 import chalk from "chalk";
 import type { WikiManifest, ManifestPage } from "../types/wiki.js";
 import { discoverPages } from "./discover-pages.js";
+
+interface HtmlArtifactPage {
+  title: string;
+  slug: string;
+  file: string;
+  order: number;
+}
+
+/**
+ * Discover standalone HTML files in outputDir that should become full pages.
+ * Excludes files that are clearly not page content (e.g. index.html).
+ */
+async function discoverHtmlPages(outputDir: string): Promise<HtmlArtifactPage[]> {
+  const files = await readdir(outputDir);
+  const htmlFiles = files.filter(
+    (f) => f.endsWith(".html") && f !== "index.html"
+  );
+
+  return htmlFiles.map((file) => {
+    const slug = file.replace(/\.html$/, "");
+    const title = inferHtmlTitle(file);
+    return { title, slug, file, order: 90 };
+  });
+}
+
+function inferHtmlTitle(filename: string): string {
+  // Strip repo-name prefix (e.g. "octopus-test-intent-map.html" -> "test-intent-map")
+  const base = filename.replace(/\.html$/, "");
+  const parts = base.split("-");
+  // If first part looks like a repo name prefix, try removing it
+  // Heuristic: if removing first segment still leaves a meaningful name
+  const name = parts.length > 2 ? parts.slice(1).join("-") : base;
+  return name
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function injectSiteHeader(html: string, repo: string): string {
+  const header = `<div style="
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: #1a1d23; color: #c8ccd4; padding: 10px 20px;
+    display: flex; align-items: center; gap: 16px;
+    border-bottom: 1px solid #2a2f3a; font-size: 13px;
+  ">
+    <a href="index.html" style="color: #d4915e; text-decoration: none; font-weight: 600;">\u2190 ${escapeHtml(repo)}</a>
+    <span style="color: #6b7280;">archdoc</span>
+  </div>`;
+  return html.replace("<body>", `<body>\n${header}`);
+}
 
 export async function renderSiteHtml(outputDir: string): Promise<void> {
   const manifestPath = join(outputDir, "manifest.json");
@@ -13,6 +62,7 @@ export async function renderSiteHtml(outputDir: string): Promise<void> {
   await mkdir(renderDir, { recursive: true });
 
   const pages = await discoverPages(outputDir, manifest);
+  const htmlPages = await discoverHtmlPages(outputDir);
 
   // Read all page content
   const pageData: { page: ManifestPage; html: string }[] = [];
@@ -23,18 +73,16 @@ export async function renderSiteHtml(outputDir: string): Promise<void> {
     pageData.push({ page, html: markdownToHtml(body, pages) });
   }
 
-  // Copy artifact files
-  for (const artifact of manifest.artifacts) {
-    try {
-      const content = await readFile(join(outputDir, artifact.file), "utf-8");
-      await writeFile(join(renderDir, artifact.file), content);
-      console.log(chalk.dim(`  ✓ ${artifact.file} (artifact)`));
-    } catch {
-      // Artifact may not exist yet
-    }
+
+  // Write standalone HTML pages with a back-to-site header
+  for (const hp of htmlPages) {
+    let src = await readFile(join(outputDir, hp.file), "utf-8");
+    src = injectSiteHeader(src, manifest.repo);
+    await writeFile(join(renderDir, hp.file), src);
+    console.log(chalk.dim(`  \u2713 ${hp.file} (standalone page)`));
   }
 
-  const html = buildSinglePageApp(manifest, pages, pageData);
+  const html = buildSinglePageApp(manifest, pages, pageData, htmlPages);
   await writeFile(join(renderDir, "index.html"), html);
   console.log(chalk.dim("  ✓ index.html"));
 }
@@ -162,7 +210,8 @@ function parseTableRow(line: string): string[] {
 function buildSinglePageApp(
   manifest: WikiManifest,
   pages: ManifestPage[],
-  pageData: { page: ManifestPage; html: string }[]
+  pageData: { page: ManifestPage; html: string }[],
+  htmlPages: HtmlArtifactPage[]
 ): string {
   const allTags = manifest.tags;
 
@@ -175,21 +224,26 @@ function buildSinglePageApp(
     </li>`
   ).join("\n");
 
+  const htmlNavItems = htmlPages.map((hp) =>
+    `<li>
+      <a href="${hp.file}" class="nav-link">
+        <span class="nav-order">${String(hp.order).padStart(2, "0")}</span>
+        <span class="nav-title">${escapeHtml(hp.title)}</span>
+      </a>
+    </li>`
+  ).join("\n");
+
   const tagPills = allTags.map((t) =>
     `<button class="tag-pill" data-tag="${escapeHtml(t)}">${escapeHtml(t)}</button>`
   ).join("\n");
 
   const pageSections = pageData.map(({ page, html }) => {
-    const artifacts = manifest.artifacts
-      .filter((a) => a.type === "html" && page.tags.some((t) => a.id.includes(t) || a.description.toLowerCase().includes(t)))
-      .map((a) => `<div class="artifact-embed"><h3>Artifact: ${escapeHtml(a.description)}</h3><iframe src="${a.file}" frameborder="0"></iframe></div>`)
-      .join("\n");
-
     return `<section class="page-section" data-page="${page.slug}" data-tags='${JSON.stringify(page.tags)}'>
       ${html}
-      ${artifacts}
     </section>`;
   }).join("\n");
+
+
 
   const harvestRows = manifest.harvest.map((h) => {
     const statusClass = h.status === "success" ? "status-ok" : h.status === "error" ? "status-err" : "status-skip";
@@ -651,33 +705,32 @@ function buildSinglePageApp(
     margin: 32px 0;
   }
 
-  /* Artifacts */
+  /* Full-page iframe sections (e.g. test intent map) */
 
-  .artifact-embed {
-    margin: 24px 0;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    overflow: hidden;
+
+  .content-area:has(.page-section-iframe.active) {
+    max-width: none;
+    padding: 0;
   }
 
-  .artifact-embed h3 {
-    font-family: var(--mono);
-    font-size: 0.65rem;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--text-dim);
-    padding: 10px 16px;
-    background: var(--bg-surface);
-    margin: 0;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .artifact-embed iframe {
+  .page-section-iframe iframe {
     width: 100%;
-    height: 600px;
+    height: 100vh;
     border: none;
     background: #fff;
   }
+
+
+
+
+
+
+
+
+
+
+
+
 
   /* Status indicators */
   .status-ok { color: var(--success); }
@@ -742,7 +795,12 @@ function buildSinglePageApp(
   <div class="nav-section-label">Pages</div>
   <ul class="nav-list" id="navList">
     ${navItems}
-  </ul>
+  </ul>${htmlPages.length > 0 ? `
+
+  <div class="nav-section-label">Interactive</div>
+  <ul class="nav-list" id="navListHtml">
+    ${htmlNavItems}
+  </ul>` : ""}
 
   <div class="tag-section">
     <div class="nav-section-label" style="padding:0 0 4px">Filter by tag</div>
@@ -775,6 +833,13 @@ function buildSinglePageApp(
             <div class="landing-card-order">${String(p.order).padStart(2, "0")}</div>
             <div class="landing-card-title">${escapeHtml(p.title)}</div>
             <div class="landing-card-tags">${p.tags.map((t) => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("")}</div>
+          </a>
+        `).join("\n")}
+        ${htmlPages.map((hp) => `
+          <a href="${hp.file}" class="landing-card">
+            <div class="landing-card-order">${String(hp.order).padStart(2, "0")}</div>
+            <div class="landing-card-title">${escapeHtml(hp.title)}</div>
+            <div class="landing-card-tags"><span class="tag-pill">interactive</span></div>
           </a>
         `).join("\n")}
       </div>
@@ -851,11 +916,13 @@ function buildSinglePageApp(
 
   // Nav clicks
   navLinks.forEach(link => {
+    if (!link.dataset.page) return; // standalone page — use normal navigation
     link.addEventListener('click', e => { e.preventDefault(); showPage(link.dataset.page); });
   });
 
   // Landing card clicks
   landingCards.forEach(card => {
+    if (!card.dataset.page) return; // standalone page — use normal navigation
     card.addEventListener('click', e => { e.preventDefault(); showPage(card.dataset.page); });
   });
 
@@ -905,6 +972,29 @@ function buildSinglePageApp(
     const visible = document.querySelectorAll('.page-section.active .mermaid');
     if (visible.length) mermaid.run({ nodes: visible });
   }, 100);
+</script>
+<script>
+  // Fit iframe: inject styles to constrain table width, then match height
+  document.querySelectorAll('.page-section-iframe iframe').forEach(iframe => {
+    iframe.addEventListener('load', () => {
+      try {
+        const doc = iframe.contentDocument;
+        if (!doc) return;
+        // Inject a style that forces content to fit the iframe width
+        const s = doc.createElement('style');
+        s.textContent = 'body { overflow-x: hidden !important; } table { table-layout: fixed !important; width: 100% !important; word-wrap: break-word; }';
+        doc.head.appendChild(s);
+        // Match iframe height to content
+        const fit = () => {
+          const h = doc.documentElement.scrollHeight;
+          if (h > 0) iframe.style.height = h + 'px';
+        };
+        fit();
+        setTimeout(fit, 500);
+        window.addEventListener('resize', fit);
+      } catch(e) { /* cross-origin */ }
+    });
+  });
 </script>
 
 </body>
