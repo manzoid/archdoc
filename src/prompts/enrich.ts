@@ -206,11 +206,39 @@ Create a new file ${outputDir}/architecture.md with:
 2. Content sections:
    - "## System Architecture" — High-level description of the system's layers and boundaries
    - "## Key Design Decisions" — Notable patterns (monorepo vs polyrepo, framework choices, API style)
-   - "## Module Dependency Map" — How the top modules relate to each other (text description, not diagram)
+   - "## Module Dependency Map" — How the top modules relate to each other
    - "## Data Flow" — How data moves through the system from input to output
    - "## Infrastructure" — Deployment model, CI/CD, environment management (infer from config files)
 
-3. Base your analysis on:
+3. **D2 System Diagram** — Write a D2 diagram file to ${outputDir}/architecture-system.d2
+   This should show the major system components, their relationships, and data flow.
+   Use D2's container syntax to group related components.
+
+   Example D2 syntax:
+   \`\`\`
+   frontend: Frontend {
+     dashboard: Next.js Dashboard
+     auth: Google OAuth
+   }
+   backend: Backend {
+     api: FastAPI API
+     pipeline: Pipeline Engine
+     jobs: Job Runner
+   }
+   storage: Storage {
+     gcs: GCS Buckets
+     db: Database
+   }
+   frontend.dashboard -> backend.api: REST calls
+   backend.pipeline -> storage.gcs: Read/write artifacts
+   backend.jobs -> backend.pipeline: Orchestrates
+   \`\`\`
+
+   After writing the .d2 file, reference it in architecture.md:
+   \`![System Architecture](architecture-system.svg)\`
+   (archdoc will render the .d2 to .svg automatically)
+
+4. Base your analysis on:
    - The overview page you already wrote
    - The module structure and symbol names below
    - Source code exploration of key files
@@ -227,7 +255,7 @@ ${topChurnSummary(bag)}
 
 === GO ===
 
-Read the source code of key entry points and configuration files, then write ${outputDir}/architecture.md.`;
+Read the source code of key entry points and configuration files, write ${outputDir}/architecture-system.d2, then write ${outputDir}/architecture.md.`;
   },
 };
 
@@ -383,7 +411,26 @@ Create ${outputDir}/runtime-flows.md describing key runtime sequences:
    - **Key Files** — Source files involved
    - **Notes** — Edge cases, error handling, performance considerations
 
-4. Use text-based sequence descriptions (no diagrams needed).
+4. **Mermaid Sequence Diagrams** — For each major flow, include a Mermaid sequence diagram
+   in a fenced code block. The HTML renderer will render these automatically.
+
+   Example:
+   \`\`\`mermaid
+   sequenceDiagram
+       participant U as User
+       participant API as FastAPI
+       participant P as Pipeline
+       participant S as Storage
+
+       U->>API: POST /jobs
+       API->>P: dispatch_job()
+       P->>S: write checkpoint
+       P-->>API: job_id
+       API-->>U: 201 Created
+   \`\`\`
+
+   Make the diagrams accurate to the actual code flow. Include the key function calls
+   and data exchanges. Keep them readable (5-10 participants max).
 
 === HARVEST DATA ===
 

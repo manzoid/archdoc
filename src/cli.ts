@@ -8,6 +8,7 @@ import { runPipeline } from "./pipeline/orchestrator.js";
 import { listEnrichSteps, generateStepPrompt, generateAllStepsPrompt } from "./prompts/enrich.js";
 import { renderBareHtml } from "./renderers/html-bare.js";
 import { renderSiteHtml } from "./renderers/html-site.js";
+import { renderDiagrams } from "./renderers/diagrams.js";
 import type { ArchdocConfig, OutputFormat, PipelinePhase } from "./types/config.js";
 import { defaultDirs } from "./types/config.js";
 
@@ -158,6 +159,12 @@ program
       }
 
       console.log(`Using run: ${latest?.baseDir ?? "(custom dir)"}`);
+
+      // Render D2 diagrams first (produces SVGs that HTML renderers reference)
+      const diagResults = await renderDiagrams(outputDir);
+      if (diagResults.length > 0) {
+        console.log(`  ${diagResults.filter((d) => d.status === "success").length} diagram(s) rendered\n`);
+      }
 
       if (options.format === "bare") {
         console.log("Rendering bare HTML site...\n");

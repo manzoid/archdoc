@@ -60,7 +60,12 @@ function markdownToHtml(md: string, pages: ManifestPage[]): string {
     return escapeHtml(title);
   });
 
-  // Code blocks
+  // Mermaid blocks — keep raw for client-side rendering
+  html = html.replace(/```mermaid\n([\s\S]*?)```/g, (_m, code) =>
+    `<pre class="mermaid">${code.trimEnd()}</pre>`
+  );
+
+  // Code blocks (non-mermaid)
   html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, lang, code) =>
     `<pre class="code-block"><code${lang ? ` class="lang-${lang}"` : ""}>${escapeHtml(code.trimEnd())}</code></pre>`
   );
@@ -883,6 +888,23 @@ function buildSinglePageApp(
     if (slug) showPage(slug);
   }
 })();
+</script>
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+
+  // Re-render mermaid when pages switch
+  const observer = new MutationObserver(() => {
+    const visible = document.querySelectorAll('.page-section.active .mermaid');
+    if (visible.length) mermaid.run({ nodes: visible });
+  });
+  observer.observe(document.getElementById('contentArea'), { childList: true, subtree: true, attributes: true });
+
+  // Initial render
+  setTimeout(() => {
+    const visible = document.querySelectorAll('.page-section.active .mermaid');
+    if (visible.length) mermaid.run({ nodes: visible });
+  }, 100);
 </script>
 
 </body>
