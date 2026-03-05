@@ -1,6 +1,6 @@
 {
   "name": "@manzoid2/archdoc",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "AI-powered codebase wiki generator",
   "type": "module",
   "main": "dist/cli.js",
