@@ -29,8 +29,9 @@ To document a codebase, run these 3 phases in order:
    Harvests codebase data and generates skeleton wiki pages. Takes seconds.
 
 2. Enrich steps 1-5 — launch each as a background task, all 5 are independent:
-   archdoc enrich /path/to/repo --step N | claude --dangerously-skip-permissions -p -
+   env -u CLAUDECODE archdoc enrich /path/to/repo --step N | claude --dangerously-skip-permissions -p -
    where N is 1 through 5. Each takes 5-20 minutes. Wait for all to complete.
+   NOTE: env -u CLAUDECODE is required when running from within a Claude Code session.
 
 3. archdoc render /path/to/repo --format site
    Builds a browsable HTML site from the enriched pages. Takes seconds.
