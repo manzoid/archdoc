@@ -185,11 +185,76 @@ program
     }
   });
 
-// Init command: register archdoc in Claude Code's CLAUDE.md
+// Init command: install dependencies and register in CLAUDE.md
 program
   .command("init")
-  .description("Add archdoc usage instructions to ~/.claude/CLAUDE.md")
+  .description("Install dependencies and add archdoc instructions to ~/.claude/CLAUDE.md")
   .action(async () => {
+    const { execSync } = await import("child_process");
+
+    function isAvailable(cmd: string): boolean {
+      try {
+        execSync(`which ${cmd}`, { stdio: "ignore" });
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    function npmInstall(pkg: string): boolean {
+      try {
+        console.log(`  Installing ${pkg}...`);
+        execSync(`npm i -g ${pkg}`, { stdio: "inherit" });
+        return true;
+      } catch {
+        console.error(`  ✗ Failed to install ${pkg}`);
+        return false;
+      }
+    }
+
+    // ── Check and install dependencies ──
+
+    console.log("Checking dependencies...\n");
+    let allGood = true;
+
+    // Brew binaries
+    const brewDeps = [
+      { cmd: "scc", desc: "code statistics" },
+      { cmd: "d2", desc: "architecture diagrams" },
+    ];
+    for (const dep of brewDeps) {
+      if (isAvailable(dep.cmd)) {
+        console.log(`  ✓ ${dep.cmd} (${dep.desc})`);
+      } else {
+        console.log(`  ✗ ${dep.cmd} not found — install with: brew install ${dep.cmd}`);
+        allGood = false;
+      }
+    }
+
+    // npm global packages
+    const npmDeps = [
+      { cmd: "repo-feature-check", pkg: "@manzoid2/repo-feature-check", desc: "symbol census" },
+      { cmd: "test-intent-map", pkg: "@manzoid2/test-intent-map", desc: "test metadata extraction" },
+    ];
+    for (const dep of npmDeps) {
+      if (isAvailable(dep.cmd)) {
+        console.log(`  ✓ ${dep.cmd} (${dep.desc})`);
+      } else {
+        if (!npmInstall(dep.pkg)) {
+          allGood = false;
+        } else {
+          console.log(`  ✓ ${dep.cmd} (${dep.desc})`);
+        }
+      }
+    }
+
+    if (!allGood) {
+      console.log("\nSome dependencies are missing. Install them and re-run archdoc init.");
+    }
+
+    // ── Register in CLAUDE.md ──
+
+    console.log("");
     const claudeDir = `${homedir()}/.claude`;
     const claudeMd = `${claudeDir}/CLAUDE.md`;
     const marker = "## archdoc";
@@ -235,12 +300,14 @@ The site URL is printed at the end. Output lives in \`~/archdoc-runs/\`.
 
       if (existing.includes(marker)) {
         console.log("archdoc is already registered in ~/.claude/CLAUDE.md");
-        return;
+      } else {
+        const separator = existing.length > 0 && !existing.endsWith("\n\n") ? "\n" : "";
+        await writeFile(claudeMd, existing + separator + block, "utf-8");
+        console.log("✓ Added archdoc instructions to ~/.claude/CLAUDE.md");
       }
 
-      const separator = existing.length > 0 && !existing.endsWith("\n\n") ? "\n" : "";
-      await writeFile(claudeMd, existing + separator + block, "utf-8");
-      console.log("✓ Added archdoc instructions to ~/.claude/CLAUDE.md");
+      // Always print usage so the current Claude session can act on it immediately
+      console.log("\n" + block);
     } catch (err) {
       console.error("archdoc init failed:", err instanceof Error ? err.message : err);
       process.exit(1);

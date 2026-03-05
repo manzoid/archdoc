@@ -20,8 +20,7 @@ export interface ArchdocConfig {
  * Slug includes org/repo for readability. Each run gets its own directory.
  *
  * Examples:
- *   ~/archdoc-runs/SakanaAIBusiness-marlin-20260305T082701Z/
- *   ~/archdoc-runs/manzoid-archdoc-20260305T140301Z/
+ *   ~/archdoc-runs/myorg-myrepo-20260305T082701Z/
  */
 export function defaultDirs(targetPath: string): { baseDir: string; outputDir: string; harvestDir: string } {
   const parts = targetPath.replace(/\\/g, "/").split("/");

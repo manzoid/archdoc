@@ -41,7 +41,7 @@ async function discoverSvgPages(outputDir: string): Promise<HtmlArtifactPage[]> 
 }
 
 function inferHtmlTitle(filename: string): string {
-  // Strip repo-name prefix (e.g. "octopus-test-intent-map.html" -> "test-intent-map")
+  // Strip repo-name prefix (e.g. "myrepo-test-intent-map.html" -> "test-intent-map")
   const base = filename.replace(/\.html$|.svg$/, "");
   const parts = base.split("-");
   // If first part looks like a repo name prefix, try removing it

@@ -50,6 +50,13 @@ export async function renderDiagrams(outputDir: string): Promise<DiagramResult[]
     };
 
     try {
+      // Sanitize common LLM-generated D2 errors before rendering
+      const raw = await readFile(inputPath, "utf-8");
+      const sanitized = sanitizeD2(raw);
+      if (sanitized !== raw) {
+        await writeFile(inputPath, sanitized, "utf-8");
+      }
+
       await execFileAsync("d2", [
         "--theme", "0",
         "--layout", "elk",
@@ -70,4 +77,33 @@ export async function renderDiagrams(outputDir: string): Promise<DiagramResult[]
   }
 
   return results;
+}
+
+/**
+ * Fix common D2 syntax errors that LLMs produce:
+ * 1. style.shape → shape (D2 uses `shape`, not `style.shape`)
+ * 2. Unquoted labels containing [], {}, or () → wrap in quotes
+ * 3. Values after colon containing special chars → wrap in quotes
+ */
+function sanitizeD2(src: string): string {
+  return src
+    .split("\n")
+    .map((line) => {
+      // style.shape: X → shape: X
+      line = line.replace(/^(\s*)style\.shape:\s*/, "$1shape: ");
+
+      // Quote unquoted labels containing [] {} ()
+      // Case 1: `foo: bar[]` (no block) → `foo: "bar[]"`
+      // Case 2: `foo: bar[] {` (block opener) → `foo: "bar[]" {`
+      line = line.replace(
+        /^(\s*\w[\w.-]*:\s+)([^"#\n][^\n]*[[\]()]+)(\s*\{?\s*)$/,
+        (_m, prefix, label, tail) => {
+          if (label.trim().startsWith('"')) return _m;
+          return `${prefix}"${label.trim()}"${tail}`;
+        }
+      );
+
+      return line;
+    })
+    .join("\n");
 }

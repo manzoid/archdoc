@@ -12,7 +12,8 @@
     "dev": "tsc --watch",
     "start": "node dist/cli.js",
     "lint": "eslint src/",
-    "clean": "rm -rf dist/"
+    "clean": "rm -rf dist/",
+    "postinstall": "echo '\n  Run \"archdoc init\" to install dependencies and register with Claude Code.\n'"
   },
   "dependencies": {
     "chalk": "^5.3.0",
