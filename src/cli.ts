@@ -2,10 +2,10 @@
 
 import { Command } from "commander";
 import { resolve, basename } from "path";
-import { readdir, stat } from "fs/promises";
+import { readdir, stat, readFile, writeFile, mkdir } from "fs/promises";
 import { homedir } from "os";
 import { runPipeline } from "./pipeline/orchestrator.js";
-import { runEnrich } from "./pipeline/enrich-runner.js";
+
 import { listEnrichSteps, generateStepPrompt, generateAllStepsPrompt } from "./prompts/enrich.js";
 import { renderBareHtml } from "./renderers/html-bare.js";
 import { renderSiteHtml } from "./renderers/html-site.js";
@@ -185,55 +185,64 @@ program
     }
   });
 
-// Full pipeline: generate → enrich (AI) → render
+// Init command: register archdoc in Claude Code's CLAUDE.md
 program
-  .command("run")
-  .description("Run the full pipeline: generate → enrich (AI) → render")
-  .argument("<target>", "Path to the codebase to document")
-  .option("--model <model>", "Claude model for enrichment (passed to claude CLI)")
-  .option("--render-format <format>", "Render format: bare or site", "site")
-  .option("--churn-since <date>", "Start date for churn analysis (YYYY-MM-DD)")
-  .option("--skip-tools <tools>", "Comma-separated list of tool IDs to skip")
-  .action(async (target: string, options) => {
-    const targetPath = resolve(target);
-    const dirs = defaultDirs(targetPath);
-    const config: ArchdocConfig = {
-      targetPath,
-      output: "markdown",
-      outputDir: dirs.outputDir,
-      harvestDir: dirs.harvestDir,
-      churnSince: options.churnSince,
-      skipTools: options.skipTools ? options.skipTools.split(",").map((t: string) => t.trim()) : undefined,
-    };
+  .command("init")
+  .description("Add archdoc usage instructions to ~/.claude/CLAUDE.md")
+  .action(async () => {
+    const claudeDir = `${homedir()}/.claude`;
+    const claudeMd = `${claudeDir}/CLAUDE.md`;
+    const marker = "## archdoc";
+
+    const block = `## archdoc
+Globally installed CLI (\`npm i -g @manzoid2/archdoc\`) for generating AI-powered codebase wikis.
+Requires \`d2\` installed (\`brew install d2\`) for architecture diagrams.
+
+To document a codebase, run these 3 phases in order:
+
+1. **Generate** (harvest data + skeleton pages, ~seconds):
+   \`\`\`
+   archdoc generate /path/to/repo
+   \`\`\`
+
+2. **Enrich** (AI writes narrative pages — run all 5 steps in parallel for speed):
+   \`\`\`
+   archdoc enrich /path/to/repo --step 1 | claude --dangerously-skip-permissions -p -
+   archdoc enrich /path/to/repo --step 2 | claude --dangerously-skip-permissions -p -
+   archdoc enrich /path/to/repo --step 3 | claude --dangerously-skip-permissions -p -
+   archdoc enrich /path/to/repo --step 4 | claude --dangerously-skip-permissions -p -
+   archdoc enrich /path/to/repo --step 5 | claude --dangerously-skip-permissions -p -
+   \`\`\`
+   Each step takes 2-10 minutes. All 5 are independent and can run in parallel.
+
+3. **Render** (build browsable HTML site, ~seconds):
+   \`\`\`
+   archdoc render /path/to/repo --format site
+   \`\`\`
+
+The site URL is printed at the end. Output lives in \`~/archdoc-runs/\`.
+`;
 
     try {
-      // Phase 1+2+4: generate
-      await runPipeline(config);
+      await mkdir(claudeDir, { recursive: true });
 
-      // Phase: enrich (AI)
-      const chalk = (await import("chalk")).default;
-      console.log(chalk.yellow("\n▸ Phase: ENRICH — AI writing narrative pages...\n"));
-      await runEnrich(dirs.harvestDir, dirs.outputDir, { model: options.model });
-      console.log(chalk.green("\n✓ Enrichment complete!\n"));
-
-      // Phase: render
-      console.log(chalk.yellow("▸ Phase: RENDER — producing HTML site...\n"));
-      const diagResults = await renderDiagrams(dirs.outputDir);
-      if (diagResults.length > 0) {
-        console.log(`  ${diagResults.filter((d) => d.status === "success").length} diagram(s) rendered`);
+      let existing = "";
+      try {
+        existing = await readFile(claudeMd, "utf-8");
+      } catch {
+        // file doesn't exist yet
       }
 
-      if (options.renderFormat === "site") {
-        await renderSiteHtml(dirs.outputDir);
-        console.log(chalk.green(`\n✓ Site written to ${dirs.outputDir}/site-fancy/`));
-      } else {
-        await renderBareHtml(dirs.outputDir);
-        console.log(chalk.green(`\n✓ Site written to ${dirs.outputDir}/site/`));
+      if (existing.includes(marker)) {
+        console.log("archdoc is already registered in ~/.claude/CLAUDE.md");
+        return;
       }
 
-      console.log(`\nRun directory: ${dirs.baseDir}`);
+      const separator = existing.length > 0 && !existing.endsWith("\n\n") ? "\n" : "";
+      await writeFile(claudeMd, existing + separator + block, "utf-8");
+      console.log("✓ Added archdoc instructions to ~/.claude/CLAUDE.md");
     } catch (err) {
-      console.error("archdoc run failed:", err instanceof Error ? err.message : err);
+      console.error("archdoc init failed:", err instanceof Error ? err.message : err);
       process.exit(1);
     }
   });

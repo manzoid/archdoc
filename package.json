@@ -1,5 +1,5 @@
 {
-  "name": "archdoc",
+  "name": "@manzoid2/archdoc",
   "version": "0.1.0",
   "description": "AI-powered codebase wiki generator",
   "type": "module",
