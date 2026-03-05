@@ -91,6 +91,9 @@ function markdownToHtml(md: string, pages: ManifestPage[]): string {
   // Tables
   html = processMarkdownTables(html);
 
+  // Images (must be before links)
+  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width:100%;height:auto;margin:12px 0;display:block">');
+
   // Links (markdown style)
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
 

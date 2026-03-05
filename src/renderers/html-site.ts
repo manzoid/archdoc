@@ -82,6 +82,16 @@ export async function renderSiteHtml(outputDir: string): Promise<void> {
     console.log(chalk.dim(`  \u2713 ${hp.file} (standalone page)`));
   }
 
+  // Copy SVG diagrams into render dir
+  const allFiles = await readdir(outputDir);
+  for (const file of allFiles) {
+    if (file.endsWith(".svg")) {
+      const src = await readFile(join(outputDir, file));
+      await writeFile(join(renderDir, file), src);
+      console.log(chalk.dim(`  \u2713 ${file} (diagram)`));
+    }
+  }
+
   const html = buildSinglePageApp(manifest, pages, pageData, htmlPages);
   await writeFile(join(renderDir, "index.html"), html);
   console.log(chalk.dim("  ✓ index.html"));
@@ -136,6 +146,9 @@ function markdownToHtml(md: string, pages: ManifestPage[]): string {
 
   // Tables
   html = processMarkdownTables(html);
+
+  // Markdown images (must be before links)
+  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="content-img">');
 
   // Markdown links
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="ext-link">$1</a>');
@@ -594,6 +607,17 @@ function buildSinglePageApp(
   }
 
   .content-area p { margin: 0 0 14px; }
+
+  .content-area .content-img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    margin: 16px 0;
+    display: block;
+    background: #fff;
+    padding: 12px;
+  }
 
   .content-area strong { color: var(--text-bright); font-weight: 600; }
   .content-area em { font-style: italic; color: var(--text); }

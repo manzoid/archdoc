@@ -210,11 +210,18 @@ Create a new file ${outputDir}/architecture.md with:
    - "## Data Flow" — How data moves through the system from input to output
    - "## Infrastructure" — Deployment model, CI/CD, environment management (infer from config files)
 
-3. **D2 System Diagram** — Write a D2 diagram file to ${outputDir}/architecture-system.d2
-   This should show the major system components, their relationships, and data flow.
-   Use D2's container syntax to group related components.
+3. **D2 Diagrams** — Write MULTIPLE D2 diagram files showing different views of the system.
+   archdoc will render each .d2 to .svg automatically. Reference them in architecture.md as:
+   \`![Description](filename.svg)\`
 
-   Example D2 syntax:
+   Write at least these diagrams (more if the codebase warrants it):
+   - **${outputDir}/architecture-system.d2** — High-level system overview: services, databases, external APIs, infrastructure
+   - **${outputDir}/architecture-backend.d2** — Backend internals: key modules, their relationships, and data flow between them
+   - **${outputDir}/architecture-data.d2** — Data flow: how data moves from user input through processing to storage and output
+
+   If the codebase has distinct subsystems worth zooming into (e.g. an AI pipeline, a job system, an auth layer), write additional diagrams for those too. Name them \`architecture-<topic>.d2\`.
+
+   Use D2's container syntax to group related components. Example:
    \`\`\`
    frontend: Frontend {
      dashboard: Next.js Dashboard
@@ -234,10 +241,6 @@ Create a new file ${outputDir}/architecture.md with:
    backend.jobs -> backend.pipeline: Orchestrates
    \`\`\`
 
-   After writing the .d2 file, reference it in architecture.md:
-   \`![System Architecture](architecture-system.svg)\`
-   (archdoc will render the .d2 to .svg automatically)
-
 4. Base your analysis on:
    - The overview page you already wrote
    - The module structure and symbol names below
@@ -255,7 +258,7 @@ ${topChurnSummary(bag)}
 
 === GO ===
 
-Read the source code of key entry points and configuration files, write ${outputDir}/architecture-system.d2, then write ${outputDir}/architecture.md.`;
+Read the source code of key entry points and configuration files. Write all D2 diagram files first, then write ${outputDir}/architecture.md referencing each diagram.`;
   },
 };
 
