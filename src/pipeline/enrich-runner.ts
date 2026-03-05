@@ -31,8 +31,8 @@ export async function runEnrich(
       delete env.CLAUDECODE;
       execSync(`claude -p --dangerously-skip-permissions ${modelArgs} /dev/stdin`, {
         input: prompt,
-        stdio: ["pipe", "inherit", "inherit"],
-        timeout: 10 * 60 * 1000, // 10 minutes per step
+        stdio: ["pipe", "ignore", "inherit"],
+        timeout: 30 * 60 * 1000, // 30 minutes per step
         maxBuffer: 10 * 1024 * 1024,
         env,
       });
