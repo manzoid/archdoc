@@ -29,9 +29,8 @@ To document a codebase, run these 3 phases in order:
    Harvests codebase data and generates skeleton wiki pages. Takes seconds.
 
 2. Enrich steps 1-5 — launch each as a background task, all 5 are independent:
-   env -u CLAUDECODE archdoc enrich /path/to/repo --step N | claude --dangerously-skip-permissions -p -
+   archdoc enrich /path/to/repo --step N --run
    where N is 1 through 5. Each takes 5-20 minutes. Wait for all to complete.
-   NOTE: env -u CLAUDECODE is required when running from within a Claude Code session.
 
 3. archdoc render /path/to/repo --format site
    Builds a browsable HTML site from the enriched pages. Takes seconds.
@@ -130,6 +129,7 @@ program
   .option("--output-dir <dir>", "Override output directory")
   .option("--step <number>", "Output prompt for a specific step number")
   .option("--all", "Output all steps as one sequenced prompt")
+  .option("--run", "Pipe the prompt directly to claude CLI (handles env setup)")
   .action(async (target: string, options) => {
     try {
       const targetPath = resolve(target);
@@ -149,7 +149,22 @@ program
           process.exit(1);
         }
         const prompt = await generateStepPrompt(harvestDir, outputDir, stepNum);
-        console.log(prompt);
+
+        if (options.run) {
+          // Pipe directly to claude CLI with clean env
+          const { execSync } = await import("child_process");
+          const env = { ...process.env };
+          delete env.CLAUDECODE;
+          execSync("claude --dangerously-skip-permissions -p -", {
+            input: prompt,
+            stdio: ["pipe", "inherit", "inherit"],
+            timeout: 30 * 60 * 1000,
+            maxBuffer: 10 * 1024 * 1024,
+            env,
+          });
+        } else {
+          console.log(prompt);
+        }
       } else if (options.all) {
         const prompt = await generateAllStepsPrompt(harvestDir, outputDir);
         console.log(prompt);
