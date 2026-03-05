@@ -261,31 +261,16 @@ program
 
     const block = `## archdoc
 Globally installed CLI (\`npm i -g @manzoid2/archdoc\`) for generating AI-powered codebase wikis.
-Requires \`d2\` installed (\`brew install d2\`) for architecture diagrams.
 
 To document a codebase, run these 3 phases in order:
 
-1. **Generate** (harvest data + skeleton pages, ~seconds):
-   \`\`\`
-   archdoc generate /path/to/repo
-   \`\`\`
+1. \`archdoc generate /path/to/repo\` — harvest data + skeleton pages (~seconds)
+2. Enrich steps 1-5 in parallel — each step pipes a prompt to claude:
+   \`archdoc enrich /path/to/repo --step N 2>/dev/null | claude --dangerously-skip-permissions -p -\`
+   where N is 1 through 5. All 5 are independent. Each takes 2-10 minutes.
+3. \`archdoc render /path/to/repo --format site\` — build browsable HTML site (~seconds)
 
-2. **Enrich** (AI writes narrative pages — run all 5 steps in parallel for speed):
-   \`\`\`
-   archdoc enrich /path/to/repo --step 1 | claude --dangerously-skip-permissions -p -
-   archdoc enrich /path/to/repo --step 2 | claude --dangerously-skip-permissions -p -
-   archdoc enrich /path/to/repo --step 3 | claude --dangerously-skip-permissions -p -
-   archdoc enrich /path/to/repo --step 4 | claude --dangerously-skip-permissions -p -
-   archdoc enrich /path/to/repo --step 5 | claude --dangerously-skip-permissions -p -
-   \`\`\`
-   Each step takes 2-10 minutes. All 5 are independent and can run in parallel.
-
-3. **Render** (build browsable HTML site, ~seconds):
-   \`\`\`
-   archdoc render /path/to/repo --format site
-   \`\`\`
-
-The site URL is printed at the end. Output lives in \`~/archdoc-runs/\`.
+Output lives in \`~/archdoc-runs/\`. The site URL is printed at the end.
 `;
 
     try {
@@ -299,7 +284,13 @@ The site URL is printed at the end. Output lives in \`~/archdoc-runs/\`.
       }
 
       if (existing.includes(marker)) {
-        console.log("archdoc is already registered in ~/.claude/CLAUDE.md");
+        // Replace existing archdoc block — find from marker to next ## or end of file
+        const markerIdx = existing.indexOf(marker);
+        const afterMarker = existing.indexOf("\n## ", markerIdx + marker.length);
+        const before = existing.slice(0, markerIdx);
+        const after = afterMarker >= 0 ? existing.slice(afterMarker + 1) : "";
+        await writeFile(claudeMd, before + block + after, "utf-8");
+        console.log("✓ Updated archdoc instructions in ~/.claude/CLAUDE.md");
       } else {
         const separator = existing.length > 0 && !existing.endsWith("\n\n") ? "\n" : "";
         await writeFile(claudeMd, existing + separator + block, "utf-8");
