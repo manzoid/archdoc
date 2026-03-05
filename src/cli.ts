@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
-import { resolve, basename } from "path";
+import { resolve, basename, join } from "path";
 import { readdir, stat, readFile, writeFile, mkdir } from "fs/promises";
 import { homedir } from "os";
 import { runPipeline } from "./pipeline/orchestrator.js";
 
 import { listEnrichSteps, generateStepPrompt, generateAllStepsPrompt } from "./prompts/enrich.js";
+import { prepareStep5Batches, generateStep5BatchPrompt, generateStep5AggregatePrompt } from "./prompts/enrich-step5-batch.js";
 import { renderBareHtml } from "./renderers/html-bare.js";
 import { renderSiteHtml } from "./renderers/html-site.js";
 import { renderDiagrams } from "./renderers/diagrams.js";
@@ -18,7 +19,7 @@ const program = new Command();
 program
   .name("archdoc")
   .description("AI-powered codebase wiki generator")
-  .version("0.2.2")
+  .version("0.3.0")
   .action(() => {
     // No subcommand — print full usage instructions for an AI agent
     console.log(`archdoc — AI-powered codebase wiki generator
@@ -28,9 +29,14 @@ To document a codebase, run these 3 phases in order:
 1. archdoc generate /path/to/repo
    Harvests codebase data and generates skeleton wiki pages. Takes seconds.
 
-2. Enrich steps 1-5 — launch each as a background task, all 5 are independent:
+2. Enrich steps 1-4 — launch each as a background task, all 4 are independent:
    archdoc enrich /path/to/repo --step N --run
-   where N is 1 through 5. Each takes 5-20 minutes. Wait for all to complete.
+   where N is 1 through 4. Each takes 5-20 minutes. Wait for all to complete.
+
+   Step 5 (test classification) is batched. Run:
+   archdoc enrich /path/to/repo --step 5
+   This prints instructions with the number of sub-tasks. Then run each sub-task,
+   and finally the aggregate step.
 
 3. archdoc render /path/to/repo --format site
    Builds a browsable HTML site from the enriched pages. Takes seconds.
@@ -40,6 +46,20 @@ Output lives in ~/archdoc-runs/. The site URL is printed at the end.
 Run 'archdoc init' to install dependencies and register with Claude Code.
 Run 'archdoc --help' for all commands and options.`);
   });
+
+/** Pipe a prompt to claude CLI with clean env */
+async function runClaude(prompt: string): Promise<void> {
+  const { execSync } = await import("child_process");
+  const env = { ...process.env };
+  delete env.CLAUDECODE;
+  execSync("claude --dangerously-skip-permissions -p -", {
+    input: prompt,
+    stdio: ["pipe", "inherit", "inherit"],
+    timeout: 30 * 60 * 1000,
+    maxBuffer: 10 * 1024 * 1024,
+    env,
+  });
+}
 
 /**
  * Derive the slug prefix for a target path (matches defaultDirs logic).
@@ -130,6 +150,8 @@ program
   .option("--step <number>", "Output prompt for a specific step number")
   .option("--all", "Output all steps as one sequenced prompt")
   .option("--run", "Pipe the prompt directly to claude CLI (handles env setup)")
+  .option("--sub <number>", "Run a specific sub-task (for batched steps like step 5)")
+  .option("--aggregate", "Aggregate sub-task results (for batched steps like step 5)")
   .action(async (target: string, options) => {
     try {
       const targetPath = resolve(target);
@@ -148,22 +170,49 @@ program
           console.error("--step must be a number");
           process.exit(1);
         }
-        const prompt = await generateStepPrompt(harvestDir, outputDir, stepNum);
 
-        if (options.run) {
-          // Pipe directly to claude CLI with clean env
-          const { execSync } = await import("child_process");
-          const env = { ...process.env };
-          delete env.CLAUDECODE;
-          execSync("claude --dangerously-skip-permissions -p -", {
-            input: prompt,
-            stdio: ["pipe", "inherit", "inherit"],
-            timeout: 30 * 60 * 1000,
-            maxBuffer: 10 * 1024 * 1024,
-            env,
-          });
+        // Step 5 uses batching
+        if (stepNum === 5) {
+          const bag = JSON.parse(await readFile(join(harvestDir, "harvest-bag.json"), "utf-8"));
+
+          if (options.aggregate) {
+            // Aggregate all batch results
+            const prompt = await generateStep5AggregatePrompt(bag, outputDir);
+            if (options.run) {
+              await runClaude(prompt);
+            } else {
+              console.log(prompt);
+            }
+          } else if (options.sub) {
+            // Run a specific sub-task
+            const subIdx = parseInt(options.sub, 10);
+            const prompt = await generateStep5BatchPrompt(bag, outputDir, subIdx);
+            if (options.run) {
+              await runClaude(prompt);
+            } else {
+              console.log(prompt);
+            }
+          } else {
+            // Prepare batches and print instructions
+            const { totalBatches } = await prepareStep5Batches(bag, outputDir);
+            const targetArg = target;
+            console.log(`Step 5 split into ${totalBatches} batches.
+
+Run each as a background task:
+  archdoc enrich ${targetArg} --step 5 --sub N --run
+where N is 1 through ${totalBatches}. Each takes 2-5 minutes.
+
+After all complete, aggregate:
+  archdoc enrich ${targetArg} --step 5 --aggregate --run`);
+          }
         } else {
-          console.log(prompt);
+          // Steps 1-4: single prompt
+          const prompt = await generateStepPrompt(harvestDir, outputDir, stepNum);
+          if (options.run) {
+            await runClaude(prompt);
+          } else {
+            console.log(prompt);
+          }
         }
       } else if (options.all) {
         const prompt = await generateAllStepsPrompt(harvestDir, outputDir);
