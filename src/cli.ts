@@ -7,6 +7,7 @@ import { homedir } from "os";
 import { runPipeline } from "./pipeline/orchestrator.js";
 
 import { listEnrichSteps, generateStepPrompt, generateAllStepsPrompt } from "./prompts/enrich.js";
+import { generateVerifyPrompt, generateFixPrompt } from "./prompts/verify.js";
 import { prepareStep5Batches, generateStep5BatchPrompt, generateStep5AggregatePrompt } from "./prompts/enrich-step5-batch.js";
 import { renderBareHtml } from "./renderers/html-bare.js";
 import { renderSiteHtml } from "./renderers/html-site.js";
@@ -40,6 +41,12 @@ To document a codebase, run these 3 phases in order:
 
 3. archdoc render /path/to/repo --format site
    Builds a browsable HTML site from the enriched pages. Takes seconds.
+
+Optional: archdoc verify /path/to/repo [--run] [--fix] [--fix-run]
+   Fact-checks the generated docs against the actual codebase.
+   --run       Run the verification pass (writes issues.json)
+   --fix       Print the correction prompt
+   --fix --run Apply corrections from issues.json to the doc files
 
 Output lives in ~/archdoc-runs/. The site URL is printed at the end.
 
@@ -379,6 +386,48 @@ Run \`archdoc\` with no arguments to get usage instructions — then follow thos
       console.log("\n" + block);
     } catch (err) {
       console.error("archdoc init failed:", err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
+// Verify command: fact-check docs against codebase, then optionally apply fixes
+program
+  .command("verify")
+  .description("Fact-check generated docs against the actual codebase")
+  .argument("<target>", "Path to the codebase (locates latest run under ~/archdoc-runs/)")
+  .option("--harvest-dir <dir>", "Override harvest directory")
+  .option("--output-dir <dir>", "Override output directory")
+  .option("--run", "Pipe the verification prompt to claude CLI")
+  .option("--fix", "Output the correction prompt (requires issues.json from a prior verify run)")
+  .action(async (target: string, options) => {
+    try {
+      const targetPath = resolve(target);
+      const latest = await findLatestRun(targetPath);
+      const harvestDir = options.harvestDir ? resolve(options.harvestDir) : latest?.harvestDir;
+      const outputDir = options.outputDir ? resolve(options.outputDir) : latest?.outputDir;
+
+      if (!harvestDir || !outputDir) {
+        console.error(`No archdoc run found for ${basename(targetPath)}. Run 'archdoc generate' first.`);
+        process.exit(1);
+      }
+
+      if (options.fix) {
+        const prompt = await generateFixPrompt(harvestDir, outputDir);
+        if (options.run) {
+          await runClaude(prompt);
+        } else {
+          console.log(prompt);
+        }
+      } else {
+        const prompt = await generateVerifyPrompt(harvestDir, outputDir);
+        if (options.run) {
+          await runClaude(prompt);
+        } else {
+          console.log(prompt);
+        }
+      }
+    } catch (err) {
+      console.error("archdoc verify failed:", err instanceof Error ? err.message : err);
       process.exit(1);
     }
   });
