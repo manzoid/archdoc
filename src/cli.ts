@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
-import { resolve, basename, join } from "path";
+import { resolve, basename, join, dirname } from "path";
 import { readdir, stat, readFile, writeFile, mkdir } from "fs/promises";
 import { homedir } from "os";
+import { fileURLToPath } from "url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const { version } = JSON.parse(await readFile(join(__dirname, "../package.json"), "utf-8"));
 import { runPipeline } from "./pipeline/orchestrator.js";
 
 import { listEnrichSteps, generateStepPrompt, generateAllStepsPrompt } from "./prompts/enrich.js";
@@ -20,7 +24,7 @@ const program = new Command();
 program
   .name("archdoc")
   .description("AI-powered codebase wiki generator")
-  .version("0.4.0")
+  .version(version)
   .action(() => {
     // No subcommand — print full usage instructions for an AI agent
     console.log(`archdoc — AI-powered codebase wiki generator
