@@ -21,6 +21,7 @@ Docs: ${outputDir}/
 
 Before starting: echo "[archdoc verify] Starting verification pass" >&2
 After each phase: echo "[archdoc verify] Phase N complete — M issues found" >&2
+(phases: 1=numeric, 2=behavioral, 3=completeness, 4=consistency)
 When done: echo "[archdoc verify] DONE — issues.json written" >&2
 
 === PHASE 1: NUMERIC FACT-CHECK ===
@@ -58,13 +59,27 @@ List the top-level directories and major modules in the repo.
 For each significant module, note if it's absent or substantially underweighted in the docs.
 Report as low-severity issues.
 
+=== PHASE 4: INTERNAL CONSISTENCY ===
+
+Without touching the repo, cross-reference the doc files only.
+
+For each key numeric or structural claim — service count, stage count, module count, pipeline
+step count, component count, layer count, etc. — find every place it is stated across all .md
+files in ${outputDir}/. Flag any contradictions where two docs state different values for the
+same thing.
+
+Example: if runtime-flows.md says "three services" but architecture.md says "four services",
+that is a "consistency" issue. Flag both documents so both can be corrected.
+
+Report each contradiction as a pair of issues, one per conflicting document.
+
 === OUTPUT ===
 
 Write ${outputDir}/issues.json with this structure:
 
 [
   {
-    "type": "numeric" | "behavioral" | "absence" | "completeness",
+    "type": "numeric" | "behavioral" | "absence" | "completeness" | "consistency",
     "severity": "high" | "medium" | "low",
     "doc": "architecture.md",
     "section": "approximate section heading where the claim appears",
