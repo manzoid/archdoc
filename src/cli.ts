@@ -20,7 +20,7 @@ const program = new Command();
 program
   .name("archdoc")
   .description("AI-powered codebase wiki generator")
-  .version("0.3.0")
+  .version("0.4.0")
   .action(() => {
     // No subcommand — print full usage instructions for an AI agent
     console.log(`archdoc — AI-powered codebase wiki generator
